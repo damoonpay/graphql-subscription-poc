@@ -1,0 +1,23 @@
+{
+  "name": "graphql-token-server",
+  "version": "1.0.0",
+  "description": "GraphQL server with token price query and subscription",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@graphql-tools/schema": "^10.0.0",
+    "graphql": "^16.8.1",
+    "graphql-subscriptions": "^2.0.0",
+    "graphql-ws": "^5.14.2",
+    "ws": "^8.14.2",
+    "express": "^4.18.2",
+    "@apollo/server": "^4.9.5",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2"
+  }
+}
+
