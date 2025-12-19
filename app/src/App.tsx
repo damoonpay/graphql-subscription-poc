@@ -1,11 +1,11 @@
 import { useQuery, useSubscription, gql } from '@apollo/client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, createContext, useContext } from 'react';
 
-// GraphQL Query for initial token data
+// GraphQL Query for individual token
 const GET_TOKEN = gql`
   query GetToken($symbol: String!) {
     token(symbol: $symbol) {
-      id
+      tokenResourceId
       symbol
       name
       price
@@ -14,11 +14,11 @@ const GET_TOKEN = gql`
   }
 `;
 
-// GraphQL Subscription - returns Token type so Apollo can auto-update cache
-const TOKEN_SUBSCRIPTION = gql`
-  subscription OnTokenUpdated($symbol: String!) {
-    tokenUpdated(symbol: $symbol) {
-      id
+// GraphQL Subscription - accepts a list of symbols, returns array of updated tokens
+const TOKENS_SUBSCRIPTION = gql`
+  subscription OnTokensUpdated($symbols: [String!]!) {
+    tokensUpdated(symbols: $symbols) {
+      tokenResourceId
       price
       change24h
     }
@@ -26,7 +26,7 @@ const TOKEN_SUBSCRIPTION = gql`
 `;
 
 interface Token {
-  id: string;
+  tokenResourceId: string;
   symbol: string;
   name: string;
   price: number;
@@ -35,25 +35,30 @@ interface Token {
 
 const TOKENS = ['ETH', 'BTC', 'SOL'];
 
+// Context to share subscription updates with all TokenCards
+interface SubscriptionContextType {
+  updatedTokens: Token[];
+}
+const SubscriptionContext = createContext<SubscriptionContextType>({ updatedTokens: [] });
+
 function TokenCard({ symbol }: { symbol: string }) {
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const previousPriceRef = useRef<number | null>(null);
 
-  // Initial query to get token data - cache will be auto-updated by subscription
+  // Individual query for this token
   const { data, loading, error } = useQuery<{ token: Token }>(GET_TOKEN, {
     variables: { symbol },
   });
 
-  // Subscribe to token updates - Apollo auto-updates the cache because we return Token with same id
-  const { data: subData } = useSubscription<{ tokenUpdated: Token }>(TOKEN_SUBSCRIPTION, {
-    variables: { symbol },
-  });
+  // Get subscription updates from context
+  const { updatedTokens } = useContext(SubscriptionContext);
 
-  // Handle subscription updates for animation
+  // Handle subscription updates for this token
   useEffect(() => {
-    if (subData?.tokenUpdated) {
-      const newPrice = subData.tokenUpdated.price;
+    const updatedToken = updatedTokens.find(t => t.tokenResourceId === data?.token.tokenResourceId);
+    if (updatedToken) {
+      const newPrice = updatedToken.price;
       
       // Determine price direction for animation
       if (previousPriceRef.current !== null) {
@@ -64,7 +69,7 @@ function TokenCard({ symbol }: { symbol: string }) {
       previousPriceRef.current = newPrice;
       setLastUpdate(new Date().toLocaleTimeString());
     }
-  }, [subData]);
+  }, [updatedTokens, data]);
 
   // Set initial price ref from query
   useEffect(() => {
@@ -126,48 +131,64 @@ function TokenCard({ symbol }: { symbol: string }) {
 }
 
 function App() {
+  const [updatedTokens, setUpdatedTokens] = useState<Token[]>([]);
+
+  // Single subscription for all tokens
+  const { data: subData } = useSubscription<{ tokensUpdated: Token[] }>(TOKENS_SUBSCRIPTION, {
+    variables: { symbols: TOKENS },
+  });
+
+  // Update context when subscription receives data
+  useEffect(() => {
+    if (subData?.tokensUpdated) {
+      setUpdatedTokens(subData.tokensUpdated);
+    }
+  }, [subData]);
+
   return (
-    <div className="app">
-      <div className="background-pattern"></div>
-      
-      <header className="header">
-        <h1 className="title">
-          <span className="title-icon">◈</span>
-          Token Price Tracker
-        </h1>
-        <p className="subtitle">Real-time GraphQL subscriptions with automatic cache updates</p>
-      </header>
-      
-      <main className="main">
-        <div className="token-grid">
-          {TOKENS.map((symbol) => (
-            <TokenCard key={symbol} symbol={symbol} />
-          ))}
-        </div>
+    <SubscriptionContext.Provider value={{ updatedTokens }}>
+      <div className="app">
+        <div className="background-pattern"></div>
         
-        <div className="info-panel">
-          <h3>How it works</h3>
-          <div className="info-steps">
-            <div className="info-step">
-              <span className="step-number">1</span>
-              <p>Initial token data fetched via GraphQL <code>query</code></p>
-            </div>
-            <div className="info-step">
-              <span className="step-number">2</span>
-              <p>Subscription returns <code>Token</code> type with same <code>id</code></p>
-            </div>
-            <div className="info-step">
-              <span className="step-number">3</span>
-              <p>Apollo Client auto-updates cache → UI re-renders automatically!</p>
+        <header className="header">
+          <h1 className="title">
+            <span className="title-icon">◈</span>
+            Token Price Tracker
+          </h1>
+          <p className="subtitle">Real-time GraphQL subscriptions with automatic cache updates</p>
+        </header>
+        
+        <main className="main">
+          <div className="token-grid">
+            {TOKENS.map((symbol) => (
+              <TokenCard key={symbol} symbol={symbol} />
+            ))}
+          </div>
+          
+          <div className="info-panel">
+            <h3>How it works</h3>
+            <div className="info-steps">
+              <div className="info-step">
+                <span className="step-number">1</span>
+                <p>Initial token data fetched via individual <code>token</code> queries</p>
+              </div>
+              <div className="info-step">
+                <span className="step-number">2</span>
+                <p><strong>Single subscription</strong> for all tokens - returns only updated ones</p>
+              </div>
+              <div className="info-step">
+                <span className="step-number">3</span>
+                <p>Apollo Client auto-updates cache → Only updated tokens animate!</p>
+              </div>
             </div>
           </div>
-        </div>
-      </main>
-      
-      <footer className="footer">
-        <p>Built with Apollo Client + GraphQL Subscriptions + Normalized Cache</p>
-      </footer>
-    </div>
+        </main>
+        
+        <footer className="footer">
+          <p>Built with Apollo Client + GraphQL Subscriptions + Normalized Cache</p>
+        </footer>
+      </div>
+    </SubscriptionContext.Provider>
   );
 }
 

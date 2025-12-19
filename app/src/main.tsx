@@ -35,7 +35,13 @@ const splitLink = split(
 // Apollo Client instance
 const client = new ApolloClient({
   link: splitLink,
-  cache: new InMemoryCache(),
+  cache: new InMemoryCache({
+    typePolicies: {
+      Token: {
+        keyFields: ['tokenResourceId'],
+      }
+    }
+  }),
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
